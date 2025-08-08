@@ -1,0 +1,126 @@
+name: Auto Release Tag
+
+on:
+  push:
+    branches:
+      - 'dev/v[0-9].[0-9].[0-9]'
+      - 'dev/v[0-9].[0-9].[0-9].[0-9]*'
+
+jobs:
+  create-release-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if this is a new branch publish
+        id: check-new-branch
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
+          # Check if this is the first time this branch is being published
+          # by checking the GitHub event payload
+          if [[ "${{ github.event.created }}" == "true" ]]; then
+            echo "is_new_branch=true" >> $GITHUB_OUTPUT
+            echo "This is a newly published branch"
+          else
+            echo "is_new_branch=false" >> $GITHUB_OUTPUT
+            echo "This is an existing branch with new commits"
+          fi
+
+      - name: Skip workflow for newly published branches
+        if: steps.check-new-branch.outputs.is_new_branch == 'true'
+        run: |
+          echo "Skipping workflow execution because this branch was just published for the first time."
+          echo "The auto-release tag workflow will run on subsequent pushes to this branch."
+          exit 0
+
+      - name: Extract version from branch name
+        if: steps.check-new-branch.outputs.is_new_branch == 'false'
+        id: extract-version
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+          # Extract version part (everything after dev/v)
+          VERSION_PART="${BRANCH_NAME#dev/v}"
+          echo "version_part=$VERSION_PART" >> $GITHUB_OUTPUT
+          
+          echo "Branch: $BRANCH_NAME"
+          echo "Version part: $VERSION_PART"
+
+      - name: Calculate new tag version
+        if: steps.check-new-branch.outputs.is_new_branch == 'false'
+        id: calculate-tag
+        run: |
+          VERSION_PART="${{ steps.extract-version.outputs.version_part }}"
+          
+          # Check if version has 4 parts (x.y.z.w) or 3 parts (x.y.z)
+          if [[ $VERSION_PART =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Version has 4 parts, increment the last part
+            MAJOR=$(echo $VERSION_PART | cut -d. -f1)
+            MINOR=$(echo $VERSION_PART | cut -d. -f2)
+            PATCH=$(echo $VERSION_PART | cut -d. -f3)
+            BUILD=$(echo $VERSION_PART | cut -d. -f4)
+            NEW_BUILD=$((BUILD + 1))
+            NEW_TAG="dev/v${MAJOR}.${MINOR}.${PATCH}.${NEW_BUILD}"
+          else
+            # Version has 3 parts, add .1
+            NEW_TAG="dev/v${VERSION_PART}.1"
+          fi
+          
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New tag will be: $NEW_TAG"
+
+      - name: Check if tag already exists
+        if: steps.check-new-branch.outputs.is_new_branch == 'false'
+        id: check-tag
+        run: |
+          NEW_TAG="${{ steps.calculate-tag.outputs.new_tag }}"
+          if git tag -l | grep -q "^$NEW_TAG$"; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $NEW_TAG already exists"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $NEW_TAG does not exist, will create it"
+          fi
+
+      - name: Create and push tag
+        if: steps.check-new-branch.outputs.is_new_branch == 'false' && steps.check-tag.outputs.tag_exists == 'false'
+        run: |
+          NEW_TAG="${{ steps.calculate-tag.outputs.new_tag }}"
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create tag
+          git tag -a "$NEW_TAG" -m "Auto-release tag $NEW_TAG from branch ${{ steps.extract-version.outputs.branch_name }}"
+          
+          # Push tag
+          git push origin "$NEW_TAG"
+          
+          echo "Created and pushed tag: $NEW_TAG"
+
+      - name: Create GitHub Release
+        if: steps.check-new-branch.outputs.is_new_branch == 'false' && steps.check-tag.outputs.tag_exists == 'false'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.calculate-tag.outputs.new_tag }}
+          release_name: Release ${{ steps.calculate-tag.outputs.new_tag }}
+          body: |
+            Automated release created from branch `${{ steps.extract-version.outputs.branch_name }}`
+            
+            ## Changes
+            This release was automatically generated when pushing to branch `${{ steps.extract-version.outputs.branch_name }}`.
+          draft: false
+          prerelease: true
+
+      - name: Tag already exists
+        if: steps.check-new-branch.outputs.is_new_branch == 'false' && steps.check-tag.outputs.tag_exists == 'true'
+        run: |
+          echo "Tag ${{ steps.calculate-tag.outputs.new_tag }} already exists. Skipping tag creation."
