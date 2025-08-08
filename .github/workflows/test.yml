@@ -70,11 +70,26 @@ jobs:
 
       # Release Drafter step removed; only manual tag and GitHub release are created
 
-      - name: Create GitHub Release
-        uses: ncipollo/release-action@v1
+      - name: Update CHANGELOG
+        id: changelog
+        uses: requarks/changelog-action@v1
         with:
-          tag: ${{ steps.calculate-tag.outputs.new_tag }}
-          name: Release ${{ steps.calculate-tag.outputs.new_tag }}
-          generateReleaseNotes: true
+          token: ${{ github.token }}
+          tag: ${{ github.ref_name }}
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          allowUpdates: true
           draft: false
-          # prerelease removed; releases will be published as normal
+          makeLatest: true
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changes }}
+          token: ${{ github.token }}
+
+      - name: Commit CHANGELOG.md
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          branch: main
+          commit_message: 'docs: update CHANGELOG.md for ${{ github.ref_name }} [skip ci]'
+          file_pattern: CHANGELOG.md
