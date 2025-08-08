@@ -45,7 +45,8 @@ jobs:
           else
             # Find the highest suffix and increment
             LAST_TAG=$(echo "$TAGS" | tail -n 1)
-            SUFFIX=$(echo "$LAST_TAG" | sed "s/^$TAG_PREFIX\.\([0-9]*\)$/\1/")
+            # Extract numeric suffix robustly
+            SUFFIX=$(echo "$LAST_TAG" | awk -F "$TAG_PREFIX." '{print $2}')
             if [[ "$LAST_TAG" = "$TAG_PREFIX" ]]; then
               NEW_TAG="${TAG_PREFIX}.1"
             elif [[ "$SUFFIX" =~ ^[0-9]+$ ]]; then
