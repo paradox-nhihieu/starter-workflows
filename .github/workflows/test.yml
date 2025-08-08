@@ -76,6 +76,8 @@ jobs:
         with:
           token: ${{ github.token }}
           tag: ${{ steps.calculate-tag.outputs.new_tag }}
+      - name: Fetch tags from remote
+        run: git fetch --tags --force
 
       - name: Create Release
         uses: ncipollo/release-action@v1.12.0
