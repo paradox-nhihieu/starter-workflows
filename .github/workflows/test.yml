@@ -38,13 +38,18 @@ jobs:
         id: calculate-tag
         run: |
           TAG_PREFIX="${{ steps.set-prefix.outputs.tag_prefix }}"
-          LATEST_TAG="${{ steps.find-latest.outputs.latest_tag }}"
-          if [ "$LATEST_TAG" = "$TAG_PREFIX" ] && [ -z "$(git tag --list "$TAG_PREFIX")" ]; then
+          TAGS=$(git tag --list "${TAG_PREFIX}*" | sort -V)
+          # If no tags exist for the prefix, use the prefix itself
+          if [ -z "$TAGS" ]; then
             NEW_TAG="$TAG_PREFIX"
           else
-            LAST_PART=$(echo "$LATEST_TAG" | awk -F. '{print $NF}')
-            if [[ "$LAST_PART" =~ ^[0-9]+$ ]]; then
-              NEXT=$((LAST_PART + 1))
+            # Find the highest suffix and increment
+            LAST_TAG=$(echo "$TAGS" | tail -n 1)
+            SUFFIX=$(echo "$LAST_TAG" | sed "s/^$TAG_PREFIX\.\([0-9]*\)$/\1/")
+            if [[ "$LAST_TAG" = "$TAG_PREFIX" ]]; then
+              NEW_TAG="${TAG_PREFIX}.1"
+            elif [[ "$SUFFIX" =~ ^[0-9]+$ ]]; then
+              NEXT=$((SUFFIX + 1))
               NEW_TAG="${TAG_PREFIX}.$NEXT"
             else
               NEW_TAG="${TAG_PREFIX}.1"
@@ -65,16 +70,12 @@ jobs:
       # Release Drafter step removed; only manual tag and GitHub release are created
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
+        uses: ncipollo/release-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.calculate-tag.outputs.new_tag }}
-          release_name: Release ${{ steps.calculate-tag.outputs.new_tag }}
-          body: |
-            ${{ steps.calculate-tag.outputs.new_tag }}
-            Generated from branch ${{ github.event.inputs.base-branch }}
-            Release notes:
-            ${{ steps.calculate-tag.outputs.new_tag }}
+          tag: ${{ steps.calculate-tag.outputs.new_tag }}
+          name: Release ${{ steps.calculate-tag.outputs.new_tag }}
+          generateReleaseNotes: true
           draft: false
-          prerelease: true
+          # prerelease removed; releases will be published as normal
