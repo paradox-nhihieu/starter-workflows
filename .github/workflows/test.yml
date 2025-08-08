@@ -19,7 +19,7 @@ jobs:
       - name: Set tag prefix from input
         id: set-prefix
         run: |
-          TAG_PREFIX="${{ github.event.inputs.base-branch }}"
+          TAG_PREFIX="pycommon-${{ github.event.inputs.base-branch }}"
           echo "tag_prefix=$TAG_PREFIX" >> $GITHUB_OUTPUT
 
       - name: Find latest tag for prefix
@@ -86,6 +86,7 @@ jobs:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.changes }}
           token: ${{ github.token }}
+          tag: ${{ steps.calculate-tag.outputs.new_tag }}
 
       - name: Commit CHANGELOG.md
         uses: stefanzweifel/git-auto-commit-action@v4
