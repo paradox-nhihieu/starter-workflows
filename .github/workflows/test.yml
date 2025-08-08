@@ -58,10 +58,11 @@ jobs:
           NEW_TAG="${{ steps.calculate-tag.outputs.new_tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          RELEASE_NOTES=test
-          git tag -a "$NEW_TAG" -m "$RELEASE_NOTES"
+          git tag -a "$NEW_TAG" -m "$NEW_TAG"
           git push origin "$NEW_TAG"
           echo "Created and pushed tag: $NEW_TAG"
+
+      # Release Drafter step removed; only manual tag and GitHub release are created
 
       - name: Create GitHub Release
         uses: actions/create-release@v1
