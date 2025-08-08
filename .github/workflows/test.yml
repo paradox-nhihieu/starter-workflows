@@ -72,8 +72,6 @@ jobs:
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ steps.calculate-tag.outputs.new_tag }}
           name: Release ${{ steps.calculate-tag.outputs.new_tag }}
