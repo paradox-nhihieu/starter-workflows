@@ -1,0 +1,44 @@
+name: Init Release Branch and Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      new-branch:
+        description: 'Name of the new branch to create (e.g. dev/v2.1.0)'
+        required: true
+      from-branch:
+        description: 'Branch to create from (e.g. main or dev/v2.0.0)'
+        required: true
+
+jobs:
+  create-branch-tag-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.from-branch }}
+          fetch-depth: 0
+
+      - name: Create new branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${{ github.event.inputs.new-branch }}"
+          git push origin "${{ github.event.inputs.new-branch }}"
+
+      - name: Create tag for new branch
+        run: |
+          git tag -a "${{ github.event.inputs.new-branch }}" -m "Init release branch ${{ github.event.inputs.new-branch }}"
+          git push origin "refs/tags/${{ github.event.inputs.new-branch }}"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          tag: tagggg-${{ github.event.inputs.new-branch }}
+          name: Release ${{ github.event.inputs.new-branch }}
+          body: |
+            Initial release for branch `${{ github.event.inputs.new-branch }}` created from `${{ github.event.inputs.from-branch }}`.
+          draft: false
+          makeLatest: true
+          token: ${{ github.token }}
