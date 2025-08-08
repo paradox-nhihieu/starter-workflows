@@ -1,0 +1,79 @@
+name: Manual Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-branch:
+        description: 'Branch to use as tag prefix, e.g. dev/v1.1.1'
+        required: true
+
+jobs:
+  manual-release-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set tag prefix from input
+        id: set-prefix
+        run: |
+          TAG_PREFIX="${{ github.event.inputs.base-branch }}"
+          echo "tag_prefix=$TAG_PREFIX" >> $GITHUB_OUTPUT
+
+      - name: Find latest tag for prefix
+        id: find-latest
+        run: |
+          TAG_PREFIX="${{ steps.set-prefix.outputs.tag_prefix }}"
+          TAGS=$(git tag --list "${TAG_PREFIX}*")
+          if [ -z "$TAGS" ]; then
+            LATEST_TAG="$TAG_PREFIX"
+          else
+            LATEST_TAG=$(echo "$TAGS" | sort -V | tail -n 1)
+          fi
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Calculate new tag version
+        id: calculate-tag
+        run: |
+          TAG_PREFIX="${{ steps.set-prefix.outputs.tag_prefix }}"
+          LATEST_TAG="${{ steps.find-latest.outputs.latest_tag }}"
+          if [ "$LATEST_TAG" = "$TAG_PREFIX" ] && [ -z "$(git tag --list "$TAG_PREFIX")" ]; then
+            NEW_TAG="$TAG_PREFIX"
+          else
+            LAST_PART=$(echo "$LATEST_TAG" | awk -F. '{print $NF}')
+            if [[ "$LAST_PART" =~ ^[0-9]+$ ]]; then
+              NEXT=$((LAST_PART + 1))
+              NEW_TAG="${TAG_PREFIX}.$NEXT"
+            else
+              NEW_TAG="${TAG_PREFIX}.1"
+            fi
+          fi
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New tag will be: $NEW_TAG"
+
+      - name: Create and push tag
+        run: |
+          NEW_TAG="${{ steps.calculate-tag.outputs.new_tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          RELEASE_NOTES=$(git log -1 --pretty=format:"%s" ${{ github.event.inputs.base-branch }})
+          git tag -a "$NEW_TAG" -m "$RELEASE_NOTES"
+          git push origin "$NEW_TAG"
+          echo "Created and pushed tag: $NEW_TAG"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.calculate-tag.outputs.new_tag }}
+          release_name: Release ${{ steps.calculate-tag.outputs.new_tag }}
+          body: |
+            ${{ steps.calculate-tag.outputs.new_tag }}
+            Generated from branch ${{ github.event.inputs.base-branch }}
+            Release notes:
+            ${{ steps.calculate-tag.outputs.new_tag }}
+          draft: false
+          prerelease: true
